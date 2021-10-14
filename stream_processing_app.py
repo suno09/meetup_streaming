@@ -1,59 +1,35 @@
-from pyspark.sql import SparkSession, DataFrameWriter
+from configparser import ConfigParser
+from pyspark.sql import SparkSession
 from pyspark.sql.functions import from_json, col, lit, count
 from pyspark.sql.types import StructType, StringType, StructField, ArrayType
 
 print("Stream Processing Application Started ...")
 
-# Code Block 1 Starts Here
-kafka_topic_name = "meetuprsvptopic"
-kafka_bootstrap_servers = "localhost:9092"
+""" load config file """
+config = ConfigParser()
+config.read('config.properties')
 
-mysql_host_name = "localhost"
-mysql_port_no = "3306"
-mysql_user_name = "root"
-mysql_password = "0000"
-mysql_database_name = "meetup_rsvp_db"
-mysql_driver_class = "com.mysql.jdbc.Driver"
-mysql_table_name = "meetup_rsvp_message_agg_detail_tbl"
-mysql_jdbc_url = "jdbc:mysql://" + mysql_host_name + ":" + mysql_port_no + "/" + mysql_database_name + "?createDatabaseIfNotExist=true"
-
-mongodb_host_name = "localhost"
-mongodb_port_no = "27017"
-mongodb_user_name = "root"
-mongodb_password = "0000"
-mongodb_database_name = "meetup_rsvp_db"
-mongodb_collection_name = "meetup_rsvp_message_detail_tbl"
-mongodb_uri = "mongodb://localhost:27017/meetup_rsvp_db"
-# Code Block 1 Ends Here
-
-# Code Block 2 Starts Here
+""" init spark """
 spark = SparkSession.builder \
-    .master("local[*]") \
-    .appName('Stream Processing Application') \
-    .config('spark.jars.packages',
-            'org.apache.spark:spark-sql-kafka-0-10_2.12:3.1.2,'
-            'org.mongodb.spark:mongo-spark-connector_2.12:3.0.1') \
+    .master(config['spark']['master']) \
+    .appName(config['spark']['app-name']) \
+    .config('spark.jars.packages', config['spark']['spark.jars.packages']) \
     .getOrCreate()
-# .config('spark.mongodb.input.uri', mongodb_uri)\
-# .config('spark.mongodb.output.uri', mongodb_uri)\
-# .config('spark.jars.packages', "org.mongodb.spark:mongo-spark-connector_2.12:3.0.1")\
 
 sc = spark.sparkContext
 sc.setLogLevel("ERROR")
-# Code Block 2 Ends Here
 
-# Code Block 3 Starts Here
+""" link spark with kafka """
 meetup_rsvp_df = spark \
     .readStream \
     .format("kafka") \
-    .option("kafka.bootstrap.servers", kafka_bootstrap_servers) \
-    .option("subscribe", kafka_topic_name) \
+    .option("kafka.bootstrap.servers", config['kafka']['bootstrap-servers']) \
+    .option("subscribe", config['kafka']['topic']) \
     .option("startingOffsets", "latest") \
     .load()
 
 print("Printing Schema of transaction_detail_df: ")
 meetup_rsvp_df.printSchema()
-# Code Block 3 Ends Here
 
 # Code Block 4 Starts Here
 # Define a schema for the message_detail data
@@ -84,7 +60,7 @@ meetup_rsvp_message_schema = StructType([
         StructField("group_topics", ArrayType(StructType([
             StructField("urlkey", StringType()),
             StructField("topic_name", StringType())
-        ]), True)),
+        ]), containsNull=True)),
         StructField("group_city", StringType()),
         StructField("group_country", StringType()),
         StructField("group_id", StringType()),
@@ -134,9 +110,9 @@ meetup_rsvp_df_4.printSchema()
 
 # Code Block 5 Starts Here
 # Writing Meetup RSVP DataFrame into MongoDB Collection Starts Here
-spark_mongodb_output_uri = "mongodb://" + mongodb_user_name + ":" + mongodb_password + "@" + mongodb_host_name + ":" + mongodb_port_no
+# spark_mongodb_output_uri = "mongodb://" + mongodb_user_name + ":" + mongodb_password + "@" + mongodb_host_name + ":" + mongodb_port_no
 # + "/" + mongodb_database_name + "." + mongodb_collection_name
-print("Printing spark_mongodb_output_uri: " + spark_mongodb_output_uri)
+print("Printing spark_mongodb_output_uri: " + config['mongodb']['uri'])
 
 
 def write_to_mongo_data(batch_df, batch_id):
@@ -146,9 +122,9 @@ def write_to_mongo_data(batch_df, batch_id):
     batch_df_.write \
         .format('mongo') \
         .mode("append") \
-        .option('uri', spark_mongodb_output_uri) \
-        .option('database', mongodb_database_name) \
-        .option('collection', mongodb_collection_name) \
+        .option('uri', config['mongodb']['uri']) \
+        .option('database', config['mongodb']['database']) \
+        .option('collection', config['mongodb']['collection']) \
         .save()
 
 
@@ -179,9 +155,9 @@ meetup_rsvp_df_5.printSchema()
 # Code Block 7 Starts Here
 # Write final result into console for debugging purpose
 trans_detail_write_stream = meetup_rsvp_df_5.writeStream \
-    .trigger(processingTime="20 seconds") \
-    .outputMode("update") \
-    .option("truncate", "false") \
+    .trigger(processingTime=config['spark']['processing-time']) \
+    .outputMode(config['spark']['output-mode']) \
+    .option("truncate", config['spark']['truncate']) \
     .format("console") \
     .start()
 # Code Block 7 Ends Here
@@ -189,7 +165,7 @@ trans_detail_write_stream = meetup_rsvp_df_5.writeStream \
 # Code Block 8 Starts Here
 # Writing Aggregated Meetup RSVP DataFrame into MySQL Database Table Starts Here
 
-print("mysql_jdbc_url: " + mysql_jdbc_url)
+print("mysql_jdbc_url: " + config['mysql']['uri'])
 
 
 def write_to_sql_data(batch_df, batch_id):
@@ -197,17 +173,17 @@ def write_to_sql_data(batch_df, batch_id):
     # Transform batchDF and write it to sink / target / persistent storage
     # Write data from spark dataframe to database
     batch_df_.write \
-        .jdbc(url=mysql_jdbc_url,
-              table=mysql_table_name,
-              mode="append",
-              properties={'driver': 'com.mysql.cj.jdbc.Driver',
-                          'user': 'root',
-                          'password': '0000'})
+        .jdbc(url=config['mysql']['uri'],
+              table=config['mysql']['table'],
+              mode=config['spark']['nosql-output-mode'],
+              properties={'driver': config['mysql']['driver-class'],
+                          'user': config['mysql']['username'],
+                          'password': config['mysql']['password']})
 
 
 meetup_rsvp_df_5.writeStream \
-    .trigger(processingTime="20 seconds") \
-    .outputMode("update") \
+    .trigger(processingTime=config['spark']['processing-time']) \
+    .outputMode(config['spark']['sql-output-mode']) \
     .foreachBatch(
         lambda batch_df, batch_id: write_to_sql_data(batch_df, batch_id)) \
     .start()

@@ -1,24 +1,23 @@
 import time
 import requests
-from kafka import KafkaProducer
-from json import dumps
 import json
+from kafka import KafkaProducer
+from configparser import ConfigParser
 
-meetup_dot_com_rsvp_stream_api_url = "http://stream.meetup.com/2/rsvps"
-kafka_topic_name = "meetuprsvptopic"
-kafka_bootstrap_servers = 'localhost:9092'
+config = ConfigParser()
+config.read('config.properties')
 
 if __name__ == '__main__':
     print('Kafka Producer Application Started ...')
 
     kafka_producer_obj = KafkaProducer(
-        bootstrap_servers=kafka_bootstrap_servers,
-        value_serializer=lambda x: dumps(x).encode('utf-8'))
+        bootstrap_servers=config['kafka']['bootstrap-servers'],
+        value_serializer=lambda x: json.dumps(x).encode('utf-8'))
 
     print('Printing before while loop start ...')
     # while True:
     try:
-        stream_api_response = requests.get(meetup_dot_com_rsvp_stream_api_url,
+        stream_api_response = requests.get(config['default']['stream-url'],
                                            stream=True,
                                            proxies={'http': '',
                                                     'https': '',
@@ -34,7 +33,7 @@ if __name__ == '__main__':
                 print(api_response_message)
                 print(type(api_response_message))
 
-                kafka_producer_obj.send(kafka_topic_name,
+                kafka_producer_obj.send(config['kafka']['topic'],
                                         api_response_message)
                 time.sleep(1)
     except Exception as ex:
