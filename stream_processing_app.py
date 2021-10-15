@@ -14,6 +14,7 @@ spark = SparkSession.builder \
     .master(config['spark']['master']) \
     .appName(config['spark']['app-name']) \
     .config('spark.jars.packages', config['spark']['spark.jars.packages']) \
+    .config("spark.driver.extraClassPath", "libs/mysql-connector-java-8.0.26.jar") \
     .getOrCreate()
 
 sc = spark.sparkContext
