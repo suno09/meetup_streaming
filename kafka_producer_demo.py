@@ -7,8 +7,15 @@ from kafka import KafkaProducer
 
 from app_log import init_log
 
+""" load config file """
+config = ConfigParser()
+config.read('config.properties')
 
-log = init_log(log_name="kafka-producer-demo", level=logging.INFO)
+log = init_log(log_name="kafka-producer-demo",
+               level=logging.INFO,
+               formatting=config['logging']['format'].__str__(),
+               datefmt=config['logging']['datefmt'].__str__(),
+               save_to_file=True)
 
 if __name__ == '__main__':
     log.info("Load configuration")
