@@ -18,11 +18,10 @@ log = init_log(log_name="kafka-producer-demo",
                save_to_file=True)
 
 if __name__ == '__main__':
-    log.info("Load configuration")
-    config = ConfigParser()
-    config.read('config.properties')
-
     log.info('Kafka Producer Application Started ...')
+
+    # while True:
+    log.info("Load new kafka-producer-demo")
     kafka_producer_obj = KafkaProducer(
         bootstrap_servers=config['kafka']['bootstrap-servers'],
         value_serializer=lambda x: json.dumps(x).encode('utf-8'))
@@ -39,8 +38,8 @@ if __name__ == '__main__':
 
                 api_response_message = json.loads(api_response_message)
 
-                log.info(f"send to kafka topic: {config['kafka']['topic']} - "
-                         f"msg: {api_response_message}")
+                # log.info(f"send to kafka topic: {config['kafka']['topic']} - "
+                #          f"msg: {api_response_message}")
 
                 kafka_producer_obj.send(config['kafka']['topic'],
                                         api_response_message)
