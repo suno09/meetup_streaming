@@ -1,8 +1,7 @@
 import dash
-import dash_html_components as dhtml
-import dash_core_components as dcc
+from dash import html, dcc, dash_table
 from dash.dependencies import Input, Output
-import dash_table
+# import dash_table
 import pandas as pd
 from sqlalchemy import create_engine
 
@@ -17,7 +16,7 @@ config = ConfigParser()
 config.read('config.properties')
 sql_config = config['mysql']
 
-log = init_log(log_name="kafka-producer-demo",
+log = init_log(log_name="stream-plot",
                level=logging.INFO,
                formatting=config['logging']['format'].__str__(),
                datefmt=config['logging']['datefmt'].__str__(),
@@ -52,10 +51,11 @@ def built_pd_df_from_sql():
     sql_query_for_bar_graph = "select group_name, " \
                               "case when response = 'yes' then " \
                               " response_count else 0 end " \
-                              " as yes_response_count " \
+                              " as yes_response_count, " \
                               "case when response = 'no' then " \
                               " response_count else 0 end " \
                               " as no_response_count " \
+                              "from meetup_rsvp_message_agg_detail_tbl " \
                               'where batch_id in (' \
                               ' select max(batch_id) ' \
                               ' from meetup_rsvp_message_agg_detail_tbl) ' \
@@ -77,16 +77,16 @@ print(df1.head())
 print(df2.head())
 
 # Assign html content to dash application layout
-app.layout = dhtml.Div(
+app.layout = html.Div(
     [
-        dhtml.H2(
+        html.H2(
             children="Real-Time Dashboard for Meetup Group's RSVP",
             style={
                 "textAlign": "center",
                 "color": "#4285F4",
                 "font-weight": "bold",
                 "font-family": "Verdana", }),
-        dhtml.Div(
+        html.Div(
             id="current_refresh_time",
             children="Current Refresh Time: ",
             style={
@@ -95,11 +95,11 @@ app.layout = dhtml.Div(
                 "font-weight": "bold",
                 "fontSize": 10,
                 "font-family": "Verdana", }),
-        dhtml.Div([
-            dhtml.Div([
+        html.Div([
+            html.Div([
                 dcc.Graph(id='live-update-graph-bar')]),
-            dhtml.Div([
-                dhtml.Br(),
+            html.Div([
+                html.Br(),
                 dash_table.DataTable(
                     id='datatable-paging',
                     columns=[{'name': i, 'id': i}
@@ -129,6 +129,7 @@ def update_layout(n):
     current_refresh_time_temp = time.strftime('%Y-%m-%d %H:%M:%S')
     return "Current Refresh time: {}".format(current_refresh_time_temp)
 
+
 @app.callback(
     Output("live-update-graph-bar", "figure"),
     [Input("interval-component", "n_intervals")]
@@ -152,7 +153,28 @@ def update_graph_bar(n):
 
     return {'data': traces, 'layout': layout}
 
+
 @app.callback(
-    Output("live-update-graph-bar", "figure"),
-    [Input("interval-component", "n_intervals")]
-)
+    Output("datatable-paging", "data"),
+    [Input("datatable-paging", "page_current"),
+     Input("datatable-paging", "page_size"),
+     Input("interval-component", "n_intervals")])
+def update_table(page_current, page_size, n):
+    global df1
+    global df2
+
+    print("In update_table")
+
+    df1_df1_dictionary_object = built_pd_df_from_sql()
+    df1 = df1_df1_dictionary_object['df1']
+    df2 = df1_df1_dictionary_object['df2']
+    print("For update interval")
+    print(df1.head())
+    print(df2.head())
+
+    return df1.to_dict('records')
+
+
+if __name__ == '__main__':
+    print("Starting Real-Time Dashboard for Meetup Group's RSVP ...")
+    app.run_server(port=8191, debug=True)
